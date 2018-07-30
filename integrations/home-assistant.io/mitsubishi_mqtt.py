@@ -14,7 +14,8 @@ from homeassistant.components.mqtt import (
 
 from homeassistant.components.climate import (
     ClimateDevice, SUPPORT_TARGET_TEMPERATURE, SUPPORT_OPERATION_MODE, 
-    SUPPORT_FAN_MODE, SUPPORT_SWING_MODE)
+    SUPPORT_FAN_MODE, SUPPORT_SWING_MODE, STATE_AUTO, STATE_COOL, STATE_DRY,
+    STATE_FAN_ONLY, STATE_HEAT, STATE_OFF)
 
 from homeassistant.const import (
     CONF_NAME, CONF_VALUE_TEMPLATE, TEMP_CELSIUS, ATTR_TEMPERATURE)
@@ -36,6 +37,27 @@ SUPPORT_FLAGS = SUPPORT_TARGET_TEMPERATURE | SUPPORT_OPERATION_MODE | SUPPORT_FA
 PLATFORM_SCHEMA = mqtt.MQTT_RW_PLATFORM_SCHEMA.extend({
     vol.Optional(CONF_NAME, default=DEFAULT_NAME): cv.string,
 })
+
+HA_STATE_TO_MQTT_CLIMATE = {
+    STATE_FAN_ONLY: "FAN",
+    STATE_DRY: "DRY",
+    STATE_COOL: "COOL",
+    STATE_HEAT: "HEAT",
+    STATE_AUTO: "AUTO",
+    STATE_OFF: "OFF",
+}
+INV_HA_STATE_TO_MQTT_CLIMATE = {v: k for k, v in HA_STATE_TO_MQTT_CLIMATE.items()}
+
+
+HA_FAN_SPEED = collections.OrderedDict()
+HA_FAN_SPEED["0 AUTO"] = "AUTO"
+HA_FAN_SPEED["1 QUIET"] = "QUIET"
+HA_FAN_SPEED["2 SPEED MIN"] = "1"
+HA_FAN_SPEED["3 SPEED 2"] = "2"
+HA_FAN_SPEED["4 SPEED 3"] = "3"
+HA_FAN_SPEED["5 SPEED MAX"] = "4"
+
+INV_HA_FAN_SPEED = {v: k for k, v in HA_FAN_SPEED.items()}
 
 
 # pylint: disable=unused-argument
@@ -71,9 +93,9 @@ class MqttClimate(ClimateDevice):
         self._retain = retain
         self._current_temperature = None
         self._target_temperature = None
-        self._fan_list = ["AUTO", "QUIET", "1", "2", "3", "4"]
+        self._fan_list = list(HA_FAN_SPEED.values())
         self._current_fan_mode = None
-        self._operation_list = ["OFF", "HEAT", "DRY", "COOL", "FAN", "AUTO"]
+        self._operation_list = list(HA_STATE_TO_MQTT_CLIMATE.values())
         self._current_operation = None
         self._current_power = None
         self._swing_list = ["AUTO", "1", "2", "3", "4", "5", "SWING"]
@@ -141,25 +163,25 @@ class MqttClimate(ClimateDevice):
     @property
     def current_fan_mode(self):
         """Return the fan setting."""
-        return self._current_fan_mode
+        return INV_HA_FAN_SPEED.get(self._current_fan_mode,self._current_fan_mode)
 
     @property
     def fan_list(self):
         """List of available fan modes."""
-        return self._fan_list
+        return list(HA_FAN_SPEED.keys())
 
     @property
     def current_operation(self):
         """Return current operation ie. heat, cool, idle."""
         if self._current_power == "OFF":
-            return "OFF"
+            return STATE_OFF
         else:
-           return self._current_operation
+           return INV_HA_STATE_TO_MQTT_CLIMATE.get(self._current_operation,self._current_operation)
    
     @property
     def operation_list(self):
         """List of available operation modes."""
-        return self._operation_list
+        return list(HA_STATE_TO_MQTT_CLIMATE.keys())
 
     @property
     def current_swing_mode(self):
@@ -182,7 +204,7 @@ class MqttClimate(ClimateDevice):
     def set_fan_mode(self, fan):
         """Set new fan mode."""
         if fan is not None:
-            self._current_fan_mode = fan
+            self._current_fan_mode = HA_FAN_SPEED.get(fan,None)
             payload = '{"fan":"' + self._current_fan_mode + '"}'
             mqtt.publish(self.hass, self._command_topic, payload,
                 self._qos, self._retain)
@@ -190,7 +212,7 @@ class MqttClimate(ClimateDevice):
 
     def set_operation_mode(self, operation_mode):
         """Set new operating mode."""
-        self._current_operation = operation_mode
+        self._current_operation = HA_STATE_TO_MQTT_CLIMATE.get(operation_mode,None)
         if self._current_operation == "OFF":
             payload = '{"power":"OFF"}'
             self._current_power = "OFF"
