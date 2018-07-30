@@ -7,6 +7,8 @@ https://github.com/lekobob/mitsu_mqtt
 
 import logging
 
+import collections
+
 import voluptuous as vol
 
 from homeassistant.components.mqtt import (
